@@ -9,6 +9,24 @@
 ![opencode](https://img.shields.io/badge/opencode-%3E%3D0.5-blueviolet.svg)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![typescript](https://img.shields.io/badge/typescript-ESM%20only-blue)
+[![Maintained by @lpdigital.me](https://img.shields.io/badge/maintained%20by-%40lpdigital.me-E4405F.svg)](https://www.instagram.com/lpdigital.me/)
+
+---
+
+<table>
+<tr>
+<td width="120" align="center" valign="top">
+<a href="https://www.instagram.com/lpdigital.me/"><img src="https://raw.githubusercontent.com/philipecomputacao/inventario-apis-gratuitas/main/assets/perfil-300.jpg" width="100" height="100" alt="@lpdigital.me" style="border-radius: 50%;" /></a>
+</td>
+<td valign="top">
+
+**Plugin e curadoria por [@lpdigital.me](https://www.instagram.com/lpdigital.me/)** — Philipe compartilha plugins, automações e IA toda semana no Instagram. Manda um follow se a barra te ajudou.
+
+</td>
+</tr>
+</table>
+
+---
 
 ## What you see
 
@@ -296,6 +314,8 @@ diff -ruN /tmp/cb/statusline.env.json python/statusline.env.json
 ## License
 
 [Apache 2.0](LICENSE)
+
+Plugin e curadoria por **[@lpdigital.me](https://www.instagram.com/lpdigital.me/)**.
 
 [oc]: https://opencode.ai
 [claude]: https://github.com/philipecomputacao/claude-llm-quota-bar
