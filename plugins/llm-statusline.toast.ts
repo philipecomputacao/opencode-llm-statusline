@@ -159,8 +159,13 @@ function projectHash(dir: string): string {
   return dir.split(sep).join("-")
 }
 
+// Strip ANSI CSI SGR sequences (ESC [ ... m). Uses String.fromCharCode to
+// avoid encoding pitfalls when the source file is round-tripped through
+// editors that strip the ESC byte.
+const ESC = String.fromCharCode(0x1b)
+const ANSI_SGR_RE = new RegExp(`${ESC}\\[[0-9;]*m`, "g")
 function stripAnsi(s: string): string {
-  return s.replace(/\[[0-9;]*m/g, "")
+  return s.replace(ANSI_SGR_RE, "")
 }
 
 function summarize(text: string): string {
@@ -325,8 +330,7 @@ async function handleSessionIdle(
 
   // Write JSONL entry using ACCUMULATED totals so the Python parser sees
   // the same running total it would see under Claude Code.
-  const projectDirSafe = projectDir
-  const dir = join(homedir(), ".claude", "projects", projectHash(projectDirSafe))
+  const dir = join(homedir(), ".claude", "projects", projectHash(projectDir))
   try {
     mkdirSync(dir, { recursive: true })
     appendFileSync(
@@ -359,13 +363,13 @@ async function handleSessionIdle(
   // + cwd + version lines even if OpenCode does not provide them.
   const stdinPayload: Record<string, unknown> = {
     model: { id: acc.model },
-    workspace: { current_dir: projectDirSafe },
+    workspace: { current_dir: projectDir },
     version: "opencode",
     context_window: { used_percentage: 0 },
     cost: { total_duration_ms: 0 },
   }
 
-  const result = await runStatusline(projectDirSafe, sessionID, stdinPayload)
+  const result = await runStatusline(projectDir, sessionID, stdinPayload)
   if (!result.ok) {
     await logWarn(client, summarize(result.output), {
       session_id: sessionID,
