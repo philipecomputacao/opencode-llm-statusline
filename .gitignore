@@ -12,6 +12,10 @@ node_modules/
 plugins/cc-statusline/
 plugins/cc-statusline/node_modules/
 
+# Vendored Python runtime cache
+python/__pycache__/
+python/lib/__pycache__/
+
 # OS / editor cruft
 .DS_Store
 *.swp
