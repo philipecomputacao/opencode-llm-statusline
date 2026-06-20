@@ -6,12 +6,18 @@
 //
 // Architecture
 // ------------
-// 1. ``message.part.updated`` events update a module-level ``currentProject`` so
-//    the bar reflects where the agent is actually working (not the shell cwd).
-// 2. ``session.idle`` fires → query session messages via client.session.messages()
-//    and aggregate token totals from AssistantMessage payloads.
-// 3. Write JSONL, spawn Python, show the rendered bar (with ANSI colors) as a
-//    TUI toast with title "Quota".
+// 1. OpenCode fires ``session.idle`` after each model response.
+// 2. The plugin queries ``client.session.messages()`` and aggregates token
+//    totals from AssistantMessage payloads in a module-level
+//    ``Map<sessionId, TokenState>`` (same pattern as the log-panel variant).
+// 3. It writes a Claude-Code-compatible JSONL entry so the Python script
+//    can read it like a real Claude Code session.
+// 4. It spawns ``python/session_tokens.py`` with the project cwd, session
+//    id, and a synthesised stdin payload.
+// 5. The script's rendered 3-line bar is delivered via ``client.tui.showToast``.
+//    If the bar text is identical to the previous one for the same session,
+//    the call is skipped (dedupe) to avoid triggering the TUI's internal
+//    rate limit.
 //
 // Environment
 // -----------
@@ -20,27 +26,30 @@
 // Installation
 // ------------
 // 1. Symlink this file into ``~/.config/opencode/plugins/``:
-//    ``ln -sf <repo>/plugins/llm-statusline.toast.ts ~/.config/opencode/plugins/llm-statusline.toast.ts``
-// 2. Add ``"plugin": ["llm-statusline.toast"]`` to ``~/.config/opencode/opencode.jsonc``.
+//    ``ln -sf <repo>/plugins/llm-statusline.toast.ts ~/.config/opencode/plugins/llm-statusline.ts``
+// 2. Add ``"plugin": ["./plugins/llm-statusline.ts"]`` (or ``"llm-statusline.toast"``)
+//    to ``~/.config/opencode/opencode.jsonc``.
 // 3. Set ``MINIMAX_API_KEY`` and/or ``OPENROUTER_API_KEY`` in the shell that
 //    launches OpenCode (the spawned Python script reads them).
-// 4. Optional: ``LLM_STATUSLINE_PYTHON`` to override the ``python3`` interpreter.
+// 4. Optional env vars:
+//    - ``LLM_STATUSLINE_PYTHON``: override the ``python3`` interpreter.
+//    - ``LLM_STATUSLINE_TOAST_MS``: override the toast duration in ms
+//      (default 30000).
+//    - ``OPENCODE_PROJECT_DIR``: pin the folder shown in the toast.
 //
 // Gotchas
 // -------
 // - OpenCode's toast popup does not render ANSI escape codes; we strip them
 //   before calling ``client.tui.showToast``. Original colors stay in the bar
 //   when the same script runs under Claude Code.
-// - Toast duration defaults to 30s. The toast is shown on every ``session.idle``,
-//   so back-to-back model responses replace (not stack) the previous toast.
-// - Latest rendered bar is cached at
-//   ``~/.cache/opencode-llm-statusline/opencode-statusline.txt`` for external
-//   tools that want to scrape it without re-running the Python script.
-// - Set ``OPENCODE_PROJECT_DIR`` in the shell to pin the project folder shown
-//   in the bar without changing the shell cwd (handy when launching from ~).
+// - The toast is shown on every ``session.idle``, but identical consecutive
+//   bars are deduplicated (skipped) to avoid hammering the TUI toast queue.
+// - Failures in showToast, mkdir, writeFile, or Python spawn are logged via
+//   ``client.app.log({ level: "warn" })`` instead of being silently dropped,
+//   so they show up in OpenCode's log panel (``:open-logs``).
 // - OpenCode 1.17.8 plugin SDK does not expose tool-call parts, so the bar
-//   reflects the shell cwd (or ``OPENCODE_PROJECT_DIR``), not the live project
-//   the agent is editing. See NOTE inside ``session.idle`` handler.
+//   reflects the shell cwd (or ``OPENCODE_PROJECT_DIR``), not the live
+//   project the agent is editing.
 
 import type { Plugin } from "@opencode-ai/plugin"
 import { spawn } from "node:child_process"
@@ -60,26 +69,17 @@ const PYTHON =
 const CACHE_DIR = join(homedir(), ".cache", "opencode-llm-statusline")
 const CACHE_FILE = join(CACHE_DIR, "opencode-statusline.txt")
 
-// Module-level state — shared across all events of all sessions.
-let currentProject: string | null = null
+const PLUGIN_NAME = "llm-statusline.toast"
+const TOAST_MS_DEFAULT = 30_000
+const TOAST_MS = (() => {
+  const raw = process.env.LLM_STATUSLINE_TOAST_MS
+  const n = raw == null ? NaN : Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : TOAST_MS_DEFAULT
+})()
 
-interface Client {
-  session: {
-    messages(opts: { path: { id: string } }): Promise<{
-      data?: Array<{ info: AssistantMsg }>
-    }>
-  }
-  tui: {
-    showToast(opts: {
-      body: {
-        message: string
-        variant: string
-        title?: string
-        duration?: number
-      }
-    }): Promise<unknown>
-  }
-}
+// Module-level state — shared across all events of all sessions.
+const sessionState = new Map<string, TokenState>()
+const lastShownBar = new Map<string, string>()
 
 interface TokenCache {
   read: number
@@ -99,47 +99,113 @@ interface AssistantMsg {
   tokens: Tokens
 }
 
+interface TokenState {
+  input: number
+  output: number
+  cache_read: number
+  cache_creation: number
+  model: string
+  lastTimestamp: string
+  requests: number
+}
+
+interface ExtractedUsage {
+  input: number
+  output: number
+  cache_read: number
+  cache_creation: number
+  model: string
+  session_id: string
+  timestamp: string
+}
+
+interface RunResult {
+  ok: boolean
+  output: string
+}
+
+interface Client {
+  session: {
+    messages(opts: { path: { id: string } }): Promise<{
+      data?: Array<{ info: AssistantMsg }>
+    }>
+  }
+  tui: {
+    showToast(opts: {
+      body: {
+        message: string
+        variant: string
+        title?: string
+        duration?: number
+      }
+    }): Promise<unknown>
+  }
+  app: {
+    log(input: { body: Record<string, unknown> }): Promise<unknown>
+  }
+}
+
+function pickNumber(...candidates: unknown[]): number {
+  for (const c of candidates) {
+    if (typeof c === "number" && Number.isFinite(c)) return c
+    if (typeof c === "string" && c.trim() !== "" && !Number.isNaN(Number(c))) {
+      return Number(c)
+    }
+  }
+  return 0
+}
+
 function projectHash(dir: string): string {
   return dir.split(sep).join("-")
 }
 
 function stripAnsi(s: string): string {
-  return s.replace(/\u001b\[[0-9;]*m/g, "")
+  return s.replace(/\[[0-9;]*m/g, "")
 }
 
-// Extract a likely project directory from a tool call's arguments.
-function extractProjectFromArgs(
-  toolName: string,
-  args: Record<string, unknown>
-): string | null {
-  const candidates = [
-    args.filePath,
-    args.path,
-    args.file,
-    args.directory,
-    args.cwd,
-  ]
-  for (const c of candidates) {
-    if (typeof c === "string" && c.trim().length > 0) {
-      return c.startsWith("/") ? dirname(c) : c
-    }
-  }
-  // bash: try to find a `cd <path>` or first absolute path mention.
-  if (toolName === "bash" || toolName === "shell") {
-    const cmd = String(args.command ?? args.cmd ?? "")
-    const cdMatch = cmd.match(/(?:^|[\s;&|])(?:cd|chdir)\s+([^\s;&|]+)/)
-    if (cdMatch && cdMatch[1].startsWith("/")) return cdMatch[1]
-    const abs = cmd.match(/(\/(?:Users|home|tmp|var|etc|opt|root)\/[^\s'";&|]*)/)
-    if (abs) return dirname(abs[1])
-  }
-  return null
+function summarize(text: string): string {
+  const clean = stripAnsi(text)
+  const lines = clean
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+  return lines.slice(0, 3).join(" • ") || "(empty)"
 }
 
-function runPython(
+function extractUsage(
+  msgs: Array<{ info?: AssistantMsg }>,
+  sessionID: string,
+): ExtractedUsage {
+  let input = 0
+  let output = 0
+  let cacheRead = 0
+  let cacheWrite = 0
+  let modelID = "opencode/unknown"
+  for (const m of msgs) {
+    const info = m?.info
+    if (!info || info.role !== "assistant") continue
+    input += info.tokens?.input || 0
+    output += info.tokens?.output || 0
+    cacheRead += info.tokens?.cache?.read || 0
+    cacheWrite += info.tokens?.cache?.write || 0
+    modelID = `${info.providerID || "?"}/${info.modelID || "?"}`
+  }
+  return {
+    input: pickNumber(input),
+    output: pickNumber(output),
+    cache_read: pickNumber(cacheRead),
+    cache_creation: pickNumber(cacheWrite),
+    model: modelID,
+    session_id: sessionID,
+    timestamp: new Date().toISOString(),
+  }
+}
+
+function runStatusline(
   projectDir: string,
   sessionID: string,
-  payload: Record<string, unknown>
-): Promise<string> {
+  stdinPayload: Record<string, unknown>,
+): Promise<RunResult> {
   return new Promise((resolve) => {
     const proc = spawn(PYTHON, [SCRIPT], {
       env: {
@@ -149,135 +215,238 @@ function runPython(
       },
       stdio: ["pipe", "pipe", "pipe"],
     })
+
     const out: Buffer[] = []
-    proc.stdout.on("data", (c: Buffer) => out.push(c))
-    proc.stderr.on("data", () => {
-      /* ignore */
+    const err: Buffer[] = []
+    let settled = false
+    const finish = (result: RunResult) => {
+      if (settled) return
+      settled = true
+      resolve(result)
+    }
+
+    proc.stdout.on("data", (chunk: Buffer) => out.push(chunk))
+    proc.stderr.on("data", (chunk: Buffer) => err.push(chunk))
+    proc.on("error", (e: Error) =>
+      finish({
+        ok: false,
+        output: `[${PLUGIN_NAME}] spawn error: ${e.message}`,
+      }),
+    )
+    proc.on("close", (code: number | null) => {
+      const stdout = Buffer.concat(out).toString().trim()
+      const stderr = Buffer.concat(err).toString().trim()
+      if (code !== 0 || !stdout) {
+        finish({
+          ok: false,
+          output: `[${PLUGIN_NAME}] exit=${code ?? "?"} stderr=${stderr.slice(0, 200) || "(empty)"}`,
+        })
+        return
+      }
+      finish({ ok: true, output: stdout })
     })
-    proc.on("error", () => resolve(""))
-    proc.on("close", (code) => {
-      resolve(code === 0 ? Buffer.concat(out).toString().trim() : "")
-    })
+
     try {
-      proc.stdin.write(JSON.stringify(payload))
+      proc.stdin.write(JSON.stringify(stdinPayload))
       proc.stdin.end()
-    } catch {
-      resolve("")
+    } catch (e) {
+      finish({
+        ok: false,
+        output: `[${PLUGIN_NAME}] stdin write failed: ${(e as Error).message}`,
+      })
     }
   })
 }
 
+async function logWarn(
+  client: Client,
+  message: string,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    await client.app.log({
+      body: { service: PLUGIN_NAME, level: "warn", message, extra },
+    })
+  } catch {
+    /* nothing else we can do; the log panel itself is unavailable */
+  }
+}
+
+async function logInfo(
+  client: Client,
+  message: string,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    await client.app.log({
+      body: { service: PLUGIN_NAME, level: "info", message, extra },
+    })
+  } catch {
+    /* noop */
+  }
+}
+
+async function handleSessionIdle(
+  client: Client,
+  projectDir: string,
+  event: { properties?: Record<string, unknown> },
+): Promise<void> {
+  const sessionID = (event?.properties?.sessionID ?? "") as string
+  if (!sessionID) return
+
+  let msgs: Array<{ info?: AssistantMsg }> = []
+  try {
+    const res = await client.session.messages({ path: { id: sessionID } })
+    msgs = (res?.data ?? []) as Array<{ info?: AssistantMsg }>
+  } catch (e) {
+    await logWarn(client, "session.messages() failed", {
+      session_id: sessionID,
+      error: (e as Error).message,
+    })
+    return
+  }
+
+  const usage = extractUsage(msgs, sessionID)
+  const now = usage.timestamp
+
+  // Accumulate per-session totals across multiple events so the Python
+  // script's running aggregation matches what Claude Code would feed it.
+  const prev = sessionState.get(sessionID)
+  const acc: TokenState = {
+    input: (prev?.input ?? 0) + usage.input,
+    output: (prev?.output ?? 0) + usage.output,
+    cache_read: (prev?.cache_read ?? 0) + usage.cache_read,
+    cache_creation: (prev?.cache_creation ?? 0) + usage.cache_creation,
+    model: usage.model || prev?.model || "opencode/unknown",
+    lastTimestamp: now,
+    requests: (prev?.requests ?? 0) + 1,
+  }
+  sessionState.set(sessionID, acc)
+
+  // Write JSONL entry using ACCUMULATED totals so the Python parser sees
+  // the same running total it would see under Claude Code.
+  const projectDirSafe = projectDir
+  const dir = join(homedir(), ".claude", "projects", projectHash(projectDirSafe))
+  try {
+    mkdirSync(dir, { recursive: true })
+    appendFileSync(
+      join(dir, `${sessionID}.jsonl`),
+      JSON.stringify({
+        type: "assistant",
+        sessionId: sessionID,
+        timestamp: now,
+        message: {
+          role: "assistant",
+          model: acc.model,
+          usage: {
+            input_tokens: acc.input,
+            output_tokens: acc.output,
+            cache_creation_input_tokens: acc.cache_creation,
+            cache_read_input_tokens: acc.cache_read,
+          },
+        },
+      }) + "\n",
+      "utf8",
+    )
+  } catch (e) {
+    await logWarn(client, "jsonl write failed", {
+      session_id: sessionID,
+      error: (e as Error).message,
+    })
+  }
+
+  // Synthesise a stdin payload so the Python script can render the model
+  // + cwd + version lines even if OpenCode does not provide them.
+  const stdinPayload: Record<string, unknown> = {
+    model: { id: acc.model },
+    workspace: { current_dir: projectDirSafe },
+    version: "opencode",
+    context_window: { used_percentage: 0 },
+    cost: { total_duration_ms: 0 },
+  }
+
+  const result = await runStatusline(projectDirSafe, sessionID, stdinPayload)
+  if (!result.ok) {
+    await logWarn(client, summarize(result.output), {
+      session_id: sessionID,
+      ok: false,
+      requests: acc.requests,
+    })
+    return
+  }
+
+  // Cache the rendered bar (after strip) for external scrapers.
+  const barClean = stripAnsi(result.output)
+  try {
+    mkdirSync(CACHE_DIR, { recursive: true })
+    writeFileSync(CACHE_FILE, barClean + "\n", "utf8")
+  } catch (e) {
+    await logWarn(client, "cache write failed", {
+      session_id: sessionID,
+      error: (e as Error).message,
+    })
+  }
+
+  // Dedupe: skip showToast if the bar text is identical to the previous
+  // one for the same session. Avoids hammering the TUI toast queue with
+  // identical updates, which can trigger an internal rate limit.
+  const prevBar = lastShownBar.get(sessionID)
+  if (prevBar === barClean) {
+    await logInfo(client, "toast deduplicated (unchanged bar)", {
+      session_id: sessionID,
+      requests: acc.requests,
+    })
+    return
+  }
+
+  const lines = barClean.split("\n").filter((l) => l.trim().length > 0)
+  const message = lines.length > 0 ? lines.join("\n") : "no data yet"
+
+  try {
+    await client.tui.showToast({
+      body: {
+        message,
+        variant: "info",
+        title: "Quota",
+        duration: TOAST_MS,
+      },
+    })
+    lastShownBar.set(sessionID, barClean)
+  } catch (e) {
+    await logWarn(client, "showToast failed", {
+      session_id: sessionID,
+      error: (e as Error).message,
+    })
+  }
+}
+
 export const LLMStatuslineToast: Plugin = async ({ client, directory }) => {
   // Priority: explicit env var > opencode directory > shell cwd.
-  // Set OPENCODE_PROJECT_DIR in your shell rc or per-session to pin a
-  // project without changing the shell cwd (e.g. when launching from ~).
   const fallbackCwd =
     process.env.OPENCODE_PROJECT_DIR ?? directory ?? process.cwd()
 
+  const c = client as unknown as Client
+
+  await logInfo(c, "plugin loaded", {
+    project: fallbackCwd,
+    toast_ms: TOAST_MS,
+    python: PYTHON,
+    script: SCRIPT,
+  })
+
   return {
-    event: async ({
-      event,
-    }: {
-      event: { type?: string; properties?: Record<string, unknown> }
-    }) => {
-      try {
-        // (eventos message.part.updated nao carregam tool parts no 1.17.8;
-        // tracking acontece dentro de session.idle via client.session.messages())
+    "session.idle": (event: unknown) =>
+      handleSessionIdle(
+        c,
+        fallbackCwd,
+        event as { properties?: Record<string, unknown> },
+      ),
 
-        if (event?.type !== "session.idle") return
-        const sessionID = (event.properties?.sessionID ?? "") as string
-        if (!sessionID) return
-
-        const c = client as unknown as Client
-        const res = await c.session.messages({ path: { id: sessionID } })
-        const msgs = (res?.data ?? []) as any[]
-
-        // NOTE: OpenCode 1.17.8 plugin SDK does NOT expose tool-call parts
-        // (no ``info.parts``, only ``text``/``reasoning``/``step-finish`` events).
-        // The ``currentProject`` tracker relies on tool events that are server-side
-        // only. Until OpenCode exposes tool parts in a future version, the project
-        // folder in the toast reflects the shell cwd (``directory ?? process.cwd()``).
-
-        let input = 0,
-          output = 0,
-          cacheRead = 0,
-          cacheWrite = 0
-        let modelID = "opencode/unknown"
-
-        for (const m of msgs) {
-          const info = m.info
-          if (!info || (info as AssistantMsg).role !== "assistant") continue
-          const t = (info as AssistantMsg).tokens
-          input += t.input || 0
-          output += t.output || 0
-          cacheRead += t.cache?.read || 0
-          cacheWrite += t.cache?.write || 0
-          modelID = `${info.providerID || "?"}/${info.modelID || "?"}`
-        }
-
-        // Prefer the project the agent is actually working in over the shell cwd.
-        const cwd = currentProject ?? fallbackCwd
-
-        const dir = join(homedir(), ".claude", "projects", projectHash(cwd))
-        mkdirSync(dir, { recursive: true })
-        appendFileSync(
-          join(dir, `${sessionID}.jsonl`),
-          JSON.stringify({
-            type: "assistant",
-            sessionId: sessionID,
-            timestamp: new Date().toISOString(),
-            message: {
-              role: "assistant",
-              model: modelID,
-              usage: {
-                input_tokens: input,
-                output_tokens: output,
-                cache_creation_input_tokens: cacheWrite,
-                cache_read_input_tokens: cacheRead,
-              },
-            },
-          }) + "\n",
-          "utf8"
-        )
-
-        const bar = await runPython(cwd, sessionID, {
-          model: { id: modelID },
-          workspace: { current_dir: cwd },
-          version: "opencode",
-          context_window: { used_percentage: 0 },
-          cost: { total_duration_ms: 0 },
-        })
-
-        if (bar) {
-          try {
-            mkdirSync(CACHE_DIR, { recursive: true })
-            writeFileSync(CACHE_FILE, bar + "\n", "utf8")
-          } catch {
-            /* noop */
-          }
-        }
-
-        // Strip ANSI codes — OpenCode's toast popup does not render them and
-        // shows them as literal escape characters. Cores ficam so no Claude Code.
-        const lines = bar
-          ? stripAnsi(bar).split("\n").filter((l: string) => l.trim())
-          : []
-        const message = lines.length > 0 ? lines.join("\n") : "no data yet"
-        try {
-          await c.tui.showToast({
-            body: {
-              message,
-              variant: "info",
-              title: "Quota",
-              duration: 30000,
-            },
-          })
-        } catch {
-          /* noop */
-        }
-      } catch {
-        // Never crash the TUI.
-      }
+    // Generic catch-all for OpenCode versions that emit a generic
+    // ``event`` handler instead of typed ``session.idle``.
+    event: ({ event }: { event: { type?: string; properties?: Record<string, unknown> } }) => {
+      if (event?.type !== "session.idle") return Promise.resolve()
+      return handleSessionIdle(c, fallbackCwd, event)
     },
   }
 }
