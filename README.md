@@ -1,11 +1,11 @@
 # opencode-llm-statusline
 
-> **OpenCode plugin that wires [claude-code-statusline][upstream] into OpenCode's TUI.**
+> **OpenCode plugin that wires [llm-quota-bar][upstream] into OpenCode's TUI.**
 > One single-file TypeScript plugin (~340 LOC) — no transitive deps — that reuses the same
 > multi-provider statusline bar used by [fcc-claude][fcc] users.
 
-[upstream]: https://github.com/philipecomputacao/claude-code-statusline
-[fcc]: https://github.com/philipecomputacao/free-claude-code-minimax
+[upstream]: https://github.com/philipecomputacao/llm-quota-bar
+[fcc]: https://github.com/philipecomputacao/free-claude-code-plus
 
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 ![status](https://img.shields.io/badge/status-stable-brightgreen.svg)
@@ -27,7 +27,7 @@ Codex, DeepSeek, Mistral, etc.) and want to know:
 
 …you need a richer bar. Rather than rewriting that logic for OpenCode's data model, this
 plugin **forwards the OpenCode event payload** to the same Python statusline script that
-`claude-code-statusline` runs under Claude Code.
+`llm-quota-bar` runs under Claude Code.
 
 The result: **one bar, two editors.** Configure the providers, colours, and quota adapters
 in one place; the bar looks identical in Claude Code and OpenCode.
@@ -95,7 +95,7 @@ the bar looks identical to the Claude Code bar.
 - [OpenCode][oc] `>= 0.5`
 - [Node.js][node] `>= 18` (for `node:child_process` types — bundled with OpenCode)
 - [Python 3.10+][py] on `PATH` (the script uses match/case, `int | None` syntax)
-- The upstream statusline script: [`claude-code-statusline`][upstream] (see below)
+- The upstream statusline script: [`llm-quota-bar`][upstream] (see below)
 
 [oc]: https://opencode.ai
 [node]: https://nodejs.org
@@ -108,12 +108,12 @@ the upstream Python statusline:
 
 ```bash
 # Clone the upstream into a stable location
-git clone https://github.com/philipecomputacao/claude-code-statusline.git \
-    ~/Projetos/projetos/claude-code-statusline
+git clone https://github.com/philipecomputacao/llm-quota-bar.git \
+    ~/Projetos/projetos/llm-quota-bar
 
 # Symlink into the Claude Code expected location
 mkdir -p ~/.claude/statusline
-ln -sf ~/Projetos/projetos/claude-code-statusline/session_tokens.py \
+ln -sf ~/Projetos/projetos/llm-quota-bar/session_tokens.py \
        ~/.claude/statusline/session_tokens.py
 ```
 
@@ -183,7 +183,7 @@ OPENROUTER_API_KEY=sk-or-...
 ```
 
 If a key is missing, the matching quota segment is silently **omitted** — no errors,
-no stack traces. See [`claude-code-statusline`][upstream] for the full provider list.
+no stack traces. See [`llm-quota-bar`][upstream] for the full provider list.
 
 ---
 
@@ -205,7 +205,7 @@ You should see something like:
 ```
 
 The **bar's content** depends entirely on the model you used and what providers have
-keys set. See the [`claude-code-statusline` README][upstream] for the full breakdown of
+keys set. See the [`llm-quota-bar` README][upstream] for the full breakdown of
 every field.
 
 ### Custom Python interpreter
@@ -227,11 +227,11 @@ This plugin has **no JSON config** of its own. All behaviour is controlled by:
 
 | Source | Controls |
 |---|---|
-| [`claude-code-statusline/statusline.env.json`][upstream-cfg] | which segments to show, colour thresholds, FX cache TTL |
+| [`llm-quota-bar/statusline.env.json`][upstream-cfg] | which segments to show, colour thresholds, FX cache TTL |
 | `~/.claude/settings.local.json` | global Claude Code statusline command (if you want the bar in the Claude Code box itself too) |
 | `~/.fcc/.env` and shell env | API keys for live quota lookups |
 
-[upstream-cfg]: https://github.com/philipecomputacao/claude-code-statusline/blob/main/statusline.env.json
+[upstream-cfg]: https://github.com/philipecomputacao/llm-quota-bar/blob/main/statusline.env.json
 
 To change the **python interpreter** or the **statusline script path**, set
 `LLM_STATUSLINE_PYTHON` and edit the `SCRIPT` constant in the plugin source. Both are
@@ -356,19 +356,19 @@ export LLM_STATUSLINE_PYTHON=/opt/homebrew/bin/python3
 ### Stale quota data
 
 The upstream script caches quota responses for 60s in
-`~/.cache/claude-code-statusline/provider-quota.json`. To force a refresh:
+`~/.cache/llm-quota-bar/provider-quota.json`. To force a refresh:
 
 ```bash
-rm ~/.cache/claude-code-statusline/provider-quota.json
+rm ~/.cache/llm-quota-bar/provider-quota.json
 ```
 
 ---
 
 ## Related projects
 
-- **[claude-code-statusline][upstream]** — the upstream Python statusline script. This
+- **[llm-quota-bar][upstream]** — the upstream Python statusline script. This
   plugin is a thin adapter for it.
-- **[free-claude-code-minimax][fcc]** — the fcc-claude fork that this plugin was
+- **[free-claude-code-plus][fcc]** — the fcc-claude fork that this plugin was
   originally built for. The statusline bar was added to fcc-claude first and then
   factored out into the upstream repo.
 - **[OpenCode][oc]** — the AI coding TUI this plugin targets.
