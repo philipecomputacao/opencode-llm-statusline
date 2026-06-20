@@ -16,6 +16,31 @@
 // Environment
 // -----------
 // MINIMAX_API_KEY and/or OPENROUTER_API_KEY in shell.
+//
+// Installation
+// ------------
+// 1. Symlink this file into ``~/.config/opencode/plugins/``:
+//    ``ln -sf <repo>/plugins/llm-statusline.toast.ts ~/.config/opencode/plugins/llm-statusline.toast.ts``
+// 2. Add ``"plugin": ["llm-statusline.toast"]`` to ``~/.config/opencode/opencode.jsonc``.
+// 3. Set ``MINIMAX_API_KEY`` and/or ``OPENROUTER_API_KEY`` in the shell that
+//    launches OpenCode (the spawned Python script reads them).
+// 4. Optional: ``LLM_STATUSLINE_PYTHON`` to override the ``python3`` interpreter.
+//
+// Gotchas
+// -------
+// - OpenCode's toast popup does not render ANSI escape codes; we strip them
+//   before calling ``client.tui.showToast``. Original colors stay in the bar
+//   when the same script runs under Claude Code.
+// - Toast duration defaults to 30s. The toast is shown on every ``session.idle``,
+//   so back-to-back model responses replace (not stack) the previous toast.
+// - Latest rendered bar is cached at
+//   ``~/.cache/opencode-llm-statusline/opencode-statusline.txt`` for external
+//   tools that want to scrape it without re-running the Python script.
+// - Set ``OPENCODE_PROJECT_DIR`` in the shell to pin the project folder shown
+//   in the bar without changing the shell cwd (handy when launching from ~).
+// - OpenCode 1.17.8 plugin SDK does not expose tool-call parts, so the bar
+//   reflects the shell cwd (or ``OPENCODE_PROJECT_DIR``), not the live project
+//   the agent is editing. See NOTE inside ``session.idle`` handler.
 
 import type { Plugin } from "@opencode-ai/plugin"
 import { spawn } from "node:child_process"
@@ -142,7 +167,7 @@ function runPython(
   })
 }
 
-export const MiniMaxStatusline: Plugin = async ({ client, directory }) => {
+export const LLMStatuslineToast: Plugin = async ({ client, directory }) => {
   // Priority: explicit env var > opencode directory > shell cwd.
   // Set OPENCODE_PROJECT_DIR in your shell rc or per-session to pin a
   // project without changing the shell cwd (e.g. when launching from ~).
