@@ -1,17 +1,48 @@
 # opencode-llm-statusline
 
-> Multi-provider quota + cost + burn-rate bar inside [OpenCode][oc]'s TUI.
+> Multi-provider quota + cost + burn-rate statusline plugin for [OpenCode][oc]'s TUI.
 > Reuses the same Python rendering pipeline as [`claude-llm-quota-bar`][claude] —
 > one bar, two editors.
 
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-![status](https://img.shields.io/badge/status-stable-brightgreen.svg)
+[![release](https://img.shields.io/github/v/release/philipecomputacao/opencode-llm-statusline?color=brightgreen)](https://github.com/philipecomputacao/opencode-llm-statusline/releases)
 ![opencode](https://img.shields.io/badge/opencode-%3E%3D0.5-blueviolet.svg)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![typescript](https://img.shields.io/badge/typescript-ESM%20only-blue)
 
-> **Status:** repo is **private** while it stabilises. Flip the visibility
-> setting on GitHub when you're ready to publish.
+## What you see
+
+```
+[MiniMax-M3·minimax]  •  📁 ~/meu-projeto  •  📟 v1.17.8
+⬆12.5K ⬇3.2K ⚡cache 25%  •  🧠 12% usado (88% livre)  •  ⏱ 1.2M / 50M tokens (2%)
+🇧🇷 R$0,37 🇺🇸 $0.06  •  ⌛ 12m  •  ⚡ 1.3K t/m
+```
+
+*Three lines, updated after every model response — identical in Claude Code and OpenCode.*
+
+### Features
+
+- **Model & provider** — active model name with provider badge (MiniMax, OpenRouter, DeepSeek, Mistral, OpenAI, Codex, Anthropic)
+- **Token counters** — ⬆ input / ⬇ output with cache read/write breakdown
+- **Context window** — percentage used with color-coded warnings (🧠)
+- **Provider quota** — remaining tokens on your Token Plan (⏱), with warn/alert thresholds
+- **Real-time cost** — estimated spend in BRL and USD, with burn-rate emoji (🧊 calm / ⚡ busy / 🔥 heavy)
+- **Session duration** — elapsed time since session start (⌛)
+- **Two output modes** — sticky TUI toast (never disappears) or log panel (`:open-logs`)
+- **Zero runtime deps** — the vendored Python script uses stdlib only; the plugin imports only Node built-ins
+
+### Supported providers
+
+| Provider | Quota endpoint | Env var |
+|---|---|---|
+| MiniMax | Token Plan API | `MINIMAX_API_KEY` |
+| OpenRouter | Credits endpoint | `OPENROUTER_API_KEY` |
+| DeepSeek | Balance API | `DEEPSEEK_API_KEY` |
+| Mistral | Usage API | `MISTRAL_API_KEY` |
+| OpenAI | Credit grants (admin key) | `OPENAI_API_KEY` |
+| Codex | Session-based tracking | *(built-in)* |
+
+*Missing a key? That segment is silently omitted — no errors, no stack traces.*
 
 ---
 
