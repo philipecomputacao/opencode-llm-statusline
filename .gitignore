@@ -1,0 +1,20 @@
+# OpenCode local config (paths, providers, model prefs) — keep private
+opencode.jsonc
+package.json
+package-lock.json
+node_modules/
+
+# Plugin output cache
+.opencode/
+.cache/
+
+# Unrelated plugins (not part of this repo)
+plugins/cc-statusline/
+plugins/cc-statusline/node_modules/
+
+# OS / editor cruft
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
