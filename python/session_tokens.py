@@ -1,4 +1,20 @@
 #!/usr/bin/env python3
+# =============================================================================
+# VENDOR HEADER — DO NOT REMOVE
+# -----------------------------------------------------------------------------
+# File:           python/session_tokens.py
+# Source:         https://github.com/philipecomputacao/llm-quota-bar
+# Vendored in:    philipecomputacao/opencode-llm-statusline
+# Purpose:        Self-contained Python statusline so the OpenCode plugin does
+#                 not depend on the Claude Code install at ~/.claude/statusline/.
+# Modifications:  None on this commit. Header added for traceability only;
+#                 all logic and pricing data below come verbatim from upstream.
+# Last upstream:  fetched 2026-06-20 (see pricing.json mtime for the same date).
+# Sync policy:    periodically re-vendor from upstream via the symlink path
+#                 described in README.md (Section "Installation"). If you need
+#                 to bump this header, also bump pricing.json + statusline.env.json
+#                 + python/lib/*.py atomically.
+# =============================================================================
 """Claude Code statusline entry point.
 
 Reads the Claude Code session JSONL, aggregates token usage, computes cost
