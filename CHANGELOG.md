@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `plugins/llm-statusline.toast.ts`: toast no longer disappears after the
+  first model response. Added a `Map<sessionId, TokenState>` accumulator
+  matching the log-panel variant, deduplicated identical bar payloads
+  before calling `client.tui.showToast` to avoid triggering the TUI's
+  internal rate limit, and replaced silent `catch { /* noop */ }` blocks
+  with structured `client.app.log({ level: "warn" })` so failures surface
+  in the OpenCode log panel (`:open-logs`) instead of being swallowed.
+  Also removed dead code (`currentProject`, `extractProjectFromArgs`).
+
+### Added
+
+- `LLM_STATUSLINE_TOAST_MS` environment variable to override the toast
+  duration in milliseconds (default `30000`).
+- `client.app.log` calls in the toast plugin so users can see when the
+  plugin loads, when a bar is deduplicated, and when internal calls fail.
+
 ## [1.1.0] - 2026-06-20
 
 ### Added
