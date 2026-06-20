@@ -1,0 +1,56 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [1.1.0] - 2026-06-20
+
+### Added
+
+- New `plugins/llm-statusline.toast.ts` server plugin that emits the rendered
+  bar as a TUI toast (30s popup) on every `session.idle`, instead of writing to
+  the log panel.
+- Vendored `python/` directory: a self-contained copy of the upstream statusline
+  script (`session_tokens.py`, `lib/`, `pricing.json`, `statusline.env.json`).
+  The plugin no longer depends on any Claude Code install at the filesystem level.
+- `OPENCODE_PROJECT_DIR` environment variable as an optional override for the
+  folder displayed in the toast (useful when launching OpenCode from `~` while
+  working in a deeper project).
+
+### Changed
+
+- Cache directory moved from `~/.cache/llm-quota-bar/` to
+  `~/.cache/opencode-llm-statusline/` to keep this plugin's state separate from
+  the upstream Claude Code statusline.
+- `.gitignore` now ignores `python/__pycache__/` and `python/lib/__pycache__/`.
+
+### Known Limitations
+
+- OpenCode 1.17.8 plugin SDK does not expose tool-call parts (`info.parts` is
+  empty; `message.part.updated` events carry only `text` / `reasoning` /
+  `step-finish` types). The toast therefore reflects the shell cwd (or the
+  `OPENCODE_PROJECT_DIR` override) rather than the project the agent is actively
+  reading.
+- OpenCode's `tui.showToast` does not render ANSI escape codes; colors from the
+  Python script are stripped before display. The Claude Code statusline keeps
+  its full color output via the vendored script.
+
+## [1.0.0] - 2026-06-20
+
+### Added
+
+- Initial release (`plugins/llm-statusline.ts`).
+- Forwards OpenCode `session.idle` events to a `session_tokens.py` script,
+  writing a Claude-Code-compatible JSONL so the upstream statusline logic
+  (token totals, cache R/W, burn rate, cost, provider quota) can be reused
+  unchanged.
+- Logs the rendered bar through `client.app.log()` (visible in OpenCode's
+  log panel).
+
+[Unreleased]: https://github.com/philipecomputacao/opencode-llm-statusline/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/philipecomputacao/opencode-llm-statusline/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/philipecomputacao/opencode-llm-statusline/releases/tag/v1.0.0

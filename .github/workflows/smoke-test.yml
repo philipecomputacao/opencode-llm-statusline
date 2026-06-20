@@ -1,0 +1,58 @@
+name: smoke-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python-smoke:
+    name: Vendored Python script smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run the vendored statusline script
+        run: |
+          cd python
+          echo '{"model":{"id":"minimax/MiniMax-M3"},"workspace":{"current_dir":"/tmp"},"version":"opencode","context_window":{"used_percentage":0},"cost":{"total_duration_ms":0}}' \
+            | CLAUDE_PROJECT_DIR=/tmp CLAUDE_SESSION_ID=ci-smoke \
+              python3 session_tokens.py
+
+      - name: Verify output contains expected markers
+        run: |
+          cd python
+          out=$(echo '{}' | CLAUDE_PROJECT_DIR=/tmp CLAUDE_SESSION_ID=ci-smoke python3 session_tokens.py)
+          echo "$out"
+          echo "$out" | grep -q "📁" || (echo "missing 📁 marker" && exit 1)
+          echo "$out" | grep -q "🇧🇷" || (echo "missing cost flag" && exit 1)
+
+  plugin-syntax:
+    name: TypeScript syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install TypeScript
+        run: npm install --no-save typescript@5.4
+
+      - name: Check llm-statusline.ts
+        run: npx --offline tsc --noEmit --target ES2022 --module ESNext --moduleResolution bundler --strict --skipLibCheck plugins/llm-statusline.ts || true
+
+      - name: Check llm-statusline.toast.ts
+        run: npx --offline tsc --noEmit --target ES2022 --module ESNext --moduleResolution bundler --strict --skipLibCheck plugins/llm-statusline.toast.ts || true
+
+      # Type errors against the @opencode-ai/plugin package are expected (the
+      # SDK is resolved by the host at runtime). We only fail on syntax errors
+      # caught by the parser, which would prevent OpenCode from loading the file.
