@@ -302,7 +302,7 @@ def _aggregate_lines(lines: Iterable[str], session_id: str) -> TokenTotals:
 
 
 def project_dir_to_hash(project_dir: str) -> str:
-    """Convert ``/home/me/Projects/foo`` to ``-home-me-Projects-foo``.
+    """Convert ``/Users/<user>/Projects/foo`` to ``-Users--user-Projects-foo``.
 
     Mirrors Claude Code's ``~/.claude/projects/`` directory naming convention.
     """

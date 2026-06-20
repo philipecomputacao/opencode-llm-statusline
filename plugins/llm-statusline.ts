@@ -138,7 +138,7 @@ function extractUsage(event: unknown): ExtractedUsage {
 
 function projectHash(projectDir: string): string {
   // Match ``lib/parser.py::project_dir_to_hash`` — replace path separators
-  // with dashes so ``/Users/luiz/foo`` becomes ``-Users-luiz-foo``.
+  // with dashes so ``/Users/<user>/foo`` becomes ``-Users--user-foo``.
   return projectDir.split(sep).join("-")
 }
 
