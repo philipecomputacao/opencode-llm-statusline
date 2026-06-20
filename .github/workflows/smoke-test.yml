@@ -21,7 +21,7 @@ jobs:
       - name: Run the vendored statusline script
         run: |
           cd python
-          echo '{"model":{"id":"minimax/MiniMax-M3"},"workspace":{"current_dir":"/tmp"},"version":"opencode","context_window":{"used_percentage":0},"cost":{"total_duration_ms":0}}' \
+          echo '{"model":{"id":"minimax/MiniMax-M3"},"workspace":{"current_dir":"/tmp"},"version":"1.0.0","context_window":{"used_percentage":0},"cost":{"total_duration_ms":0}}' \
             | CLAUDE_PROJECT_DIR=/tmp CLAUDE_SESSION_ID=ci-smoke \
               python3 session_tokens.py
 

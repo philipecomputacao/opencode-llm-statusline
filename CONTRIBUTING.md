@@ -9,7 +9,7 @@ and reproductions are welcome.
 opencode-llm-statusline/
 ├── plugins/
 │   ├── llm-statusline.ts          # log-panel variant (v1.0.0)
-│   └── llm-statusline.toast.ts    # toast variant (v1.1.0)
+│   └── llm-statusline.toast.ts    # toast variant (v1.2.0)
 ├── python/                        # vendored upstream statusline script
 │   ├── session_tokens.py
 │   ├── lib/                       # parser, display, pricing, fx, provider_quota
@@ -85,7 +85,7 @@ Co-Authored-By: <Model Name> <noreply@example.com>
 
 - [ ] Updated `CHANGELOG.md` under `[Unreleased]`.
 - [ ] CI smoke test passes (`.github/workflows/smoke-test.yml`).
-- [ ] Manual smoke test in OpenCode 1.17.8: toast appears with correct bar.
+- [ ] Manual smoke test in the latest OpenCode: toast appears with correct bar.
 - [ ] No secrets, tokens, or `~/Users/<name>/` paths in the diff.
 
 ## Reporting Bugs
@@ -97,7 +97,7 @@ Use the **Bug Report** issue template. Include:
 - OpenCode log excerpt (`~/.local/share/opencode/log/opencode.log`).
 - Python script output when run manually:
   ```bash
-  echo '{"model":{"id":"..."},"workspace":{"current_dir":"..."},"version":"opencode","context_window":{"used_percentage":0},"cost":{"total_duration_ms":0}}' \
+  echo '{"model":{"id":"..."},"workspace":{"current_dir":"..."},"version":"1.17.8","context_window":{"used_percentage":0},"cost":{"total_duration_ms":0}}' \
     | CLAUDE_PROJECT_DIR=/tmp CLAUDE_SESSION_ID=test \
       python3 python/session_tokens.py
   ```

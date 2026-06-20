@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-20
+
 ### Fixed
 
 - `plugins/llm-statusline.toast.ts`: toast is now **sticky** (duration=0 =
@@ -24,9 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `LLM_STATUSLINE_TOAST_MS` environment variable to override the toast
-  duration in milliseconds (default `30000`).
+  duration in milliseconds (default `0` = sticky, never auto-dismiss).
 - `client.app.log` calls in the toast plugin so users can see when the
   plugin loads, when a bar is deduplicated, and when internal calls fail.
+- Keep-alive timer in the toast variant (`setInterval` every 4 min) that
+  re-fires the last known bar so it never disappears.
+
+### Changed
+
+- `TOAST_MS_DEFAULT` removed; `TOAST_MS` now defaults to `0` (sticky).
+- Installation and smoke-test examples in README now use a real version
+  number (`1.17.8`) instead of the string `"opencode"`.
 
 ## [1.1.0] - 2026-06-20
 
@@ -72,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Logs the rendered bar through `client.app.log()` (visible in OpenCode's
   log panel).
 
-[Unreleased]: https://github.com/philipecomputacao/opencode-llm-statusline/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/philipecomputacao/opencode-llm-statusline/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/philipecomputacao/opencode-llm-statusline/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/philipecomputacao/opencode-llm-statusline/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/philipecomputacao/opencode-llm-statusline/releases/tag/v1.0.0

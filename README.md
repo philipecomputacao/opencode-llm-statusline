@@ -4,9 +4,6 @@
 > Reuses the same Python rendering pipeline as [`claude-llm-quota-bar`][claude] —
 > one bar, two editors.
 
-[oc]: https://opencode.ai
-[claude]: https://github.com/philipecomputacao/claude-llm-quota-bar
-
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 ![status](https://img.shields.io/badge/status-stable-brightgreen.svg)
 ![opencode](https://img.shields.io/badge/opencode-%3E%3D0.5-blueviolet.svg)
@@ -40,7 +37,7 @@ identical in both editors.
 | Variant | File | Output | Best for |
 |---|---|---|---|
 | **Log panel** (v1.0.0) | `plugins/llm-statusline.ts` | bar in OpenCode's log panel (`:open-logs`) | Quiet users who don't want popups |
-| **Toast popup** (v1.1.0) | `plugins/llm-statusline.toast.ts` | Sticky TUI toast (never disappears) + `:open-logs` backup | Users who want the bar always visible |
+| **Toast popup** (v1.2.0) | `plugins/llm-statusline.toast.ts` | Sticky TUI toast (never disappears) + `:open-logs` backup | Users who want the bar always visible |
 
 Both variants share the same Python script and the same quota adapters.
 
@@ -98,7 +95,7 @@ cd opencode-llm-statusline
 
 ### 2. Symlink the variant you want
 
-For the **toast popup** variant (v1.1.0, recommended):
+For the **toast popup** variant (v1.2.0, recommended):
 
 ```bash
 mkdir -p ~/.config/opencode/plugins
@@ -148,7 +145,7 @@ See the full list of supported providers and quota endpoints in the
 ### 5. Restart OpenCode
 
 Plugins are loaded at boot. Send any prompt and the toast should fire
-(variant 1.1.0) or the bar should appear in the log panel (variant 1.0.0).
+(variant 1.2.0) or the bar should appear in the log panel (variant 1.0.0).
 
 ---
 
@@ -159,6 +156,7 @@ This plugin ships with sensible defaults. Tweak via env vars:
 | Env var | Default | Effect |
 |---|---|---|
 | `LLM_STATUSLINE_PYTHON` | `python3` | Python interpreter to spawn |
+| `LLM_STATUSLINE_TOAST_MS` | `0` (sticky) | Toast duration in ms. 0 = never auto-dismiss |
 | `OPENCODE_PROJECT_DIR` | (shell cwd) | Override the folder shown in the bar |
 
 All other behaviour (which segments to render, colour thresholds, FX cache
@@ -185,7 +183,7 @@ TTL, etc.) lives in the vendored
    The target must exist.
 3. Run the Python script by hand:
    ```bash
-   echo '{"model":{"id":"minimax/MiniMax-M3"},"workspace":{"current_dir":"/tmp"},"version":"opencode","context_window":{"used_percentage":0},"cost":{"total_duration_ms":0}}' \
+   echo '{"model":{"id":"minimax/MiniMax-M3"},"workspace":{"current_dir":"/tmp"},"version":"1.17.8","context_window":{"used_percentage":0},"cost":{"total_duration_ms":0}}' \
      | CLAUDE_PROJECT_DIR=/tmp CLAUDE_SESSION_ID=test \
        python3 "$(pwd)/python/session_tokens.py"
    ```
@@ -268,6 +266,7 @@ diff -ruN /tmp/cb/statusline.env.json python/statusline.env.json
 
 [Apache 2.0](LICENSE)
 
+[oc]: https://opencode.ai
 [claude]: https://github.com/philipecomputacao/claude-llm-quota-bar
 [fcc]: https://github.com/philipecomputacao/free-claude-code-plus
 [node]: https://nodejs.org
