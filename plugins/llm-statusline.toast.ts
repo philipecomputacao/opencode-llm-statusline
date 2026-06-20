@@ -15,8 +15,8 @@
 // 4. It spawns ``python/session_tokens.py`` with the project cwd, session
 //    id, and a synthesised stdin payload.
 // 5. The script's rendered 3-line bar is delivered via ``client.tui.showToast``
-//    (default 5 min duration, configurable via ``LLM_STATUSLINE_TOAST_MS``)
-//    and also logged to ``:open-logs`` as a fallback.
+//    (sticky by default; keep-alive timer re-fires every 4 min as safety net)
+//    and also logged to ``:open-logs`` as a permanent reference.
 //    If the bar text is identical to the previous one for the same session,
 //    the call is skipped (dedupe) to avoid triggering the TUI's internal
 //    rate limit.
@@ -36,7 +36,7 @@
 // 4. Optional env vars:
 //    - ``LLM_STATUSLINE_PYTHON``: override the ``python3`` interpreter.
 //    - ``LLM_STATUSLINE_TOAST_MS``: override the toast duration in ms
-//      (default 300000 = 5 min).
+//      (default 0 = sticky, never auto-dismisses).
 //    - ``OPENCODE_PROJECT_DIR``: pin the folder shown in the toast.
 //
 // Gotchas
@@ -44,9 +44,9 @@
 // - OpenCode's toast popup does not render ANSI escape codes; we strip them
 //   before calling ``client.tui.showToast``. Original colors stay in the bar
 //   when the same script runs under Claude Code.
-// - The toast auto-dismisses after ``TOAST_MS`` (default 5 min). Increase
-//   ``LLM_STATUSLINE_TOAST_MS`` if you want it even longer. The bar is also
-//   logged to ``:open-logs`` on every update so you can always find it there.
+// - The toast is sticky by default (duration=0 = never auto-dismiss). A
+//   keep-alive timer re-fires it every 4 min as a safety net. The bar is
+//   also logged to ``:open-logs`` on every update so you can always find it.
 // - OpenCode version is detected via ``opencode --version`` at plugin init
 //   and shown as ``📟 v1.17.8`` in the bar.
 // - Failures in showToast, mkdir, writeFile, or Python spawn are logged via
@@ -75,11 +75,12 @@ const CACHE_DIR = join(homedir(), ".cache", "opencode-llm-statusline")
 const CACHE_FILE = join(CACHE_DIR, "opencode-statusline.txt")
 
 const PLUGIN_NAME = "llm-statusline.toast"
-const TOAST_MS_DEFAULT = 300_000
+// Duration 0 = sticky toast that never auto-dismisses. We still refresh it
+// on every session.idle so the data stays current.
 const TOAST_MS = (() => {
   const raw = process.env.LLM_STATUSLINE_TOAST_MS
   const n = raw == null ? NaN : Number(raw)
-  return Number.isFinite(n) && n > 0 ? n : TOAST_MS_DEFAULT
+  return Number.isFinite(n) && n >= 0 ? n : 0
 })()
 
 // Detect the real OpenCode version at module init time (runs once per
@@ -110,6 +111,14 @@ const _versionPromise = detectOpenCodeVersion().then((v) => { OPENCODE_VERSION =
 // Module-level state — shared across all events of all sessions.
 const sessionState = new Map<string, TokenState>()
 const lastShownBar = new Map<string, string>()
+
+// Keep-alive: re-fire the toast every 4 min so it never disappears, even
+// between model responses. Stores the last known client + message.
+let keepAliveClient: Client | null = null
+let keepAliveSessionID = ""
+let keepAliveMessage = ""
+let keepAliveTimer: ReturnType<typeof setInterval> | null = null
+const KEEP_ALIVE_MS = 240_000 // re-show every 4 min
 
 interface TokenCache {
   read: number
@@ -446,8 +455,12 @@ async function handleSessionIdle(
       },
     })
     lastShownBar.set(sessionID, barClean)
-    // Also log the bar to the app log so it's visible in :open-logs after
-    // the toast auto-dismisses.
+    // Feed the keep-alive timer so it can re-fire between session.idle events.
+    keepAliveClient = client
+    keepAliveSessionID = sessionID
+    keepAliveMessage = message
+    // Also log the bar to the app log so it's visible in :open-logs as a
+    // permanent reference.
     await logInfo(client, summarize(result.output), {
       session_id: sessionID,
       ok: true,
@@ -474,6 +487,21 @@ export const LLMStatuslineToast: Plugin = async ({ client, directory }) => {
     python: PYTHON,
     script: SCRIPT,
   })
+
+  // Keep-alive timer: re-fires the last known toast every KEEP_ALIVE_MS so
+  // the bar never disappears, even when the model is idle for a long time.
+  keepAliveClient = c
+  keepAliveTimer = setInterval(() => {
+    if (!keepAliveClient || !keepAliveMessage) return
+    keepAliveClient.tui.showToast({
+      body: {
+        message: keepAliveMessage,
+        variant: "info",
+        title: "Quota",
+        duration: TOAST_MS,
+      },
+    }).catch(() => { /* keep-alive best-effort */ })
+  }, KEEP_ALIVE_MS)
 
   return {
     "session.idle": (event: unknown) =>
