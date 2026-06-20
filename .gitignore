@@ -22,3 +22,17 @@ python/lib/__pycache__/
 *.swo
 .idea/
 .vscode/
+
+# Secrets, credentials, and local config (preventive — none should land here)
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials
+secrets
+*.log
+*.sqlite
+*.db
+*.sqlite3
