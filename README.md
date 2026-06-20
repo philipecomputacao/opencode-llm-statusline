@@ -40,7 +40,7 @@ identical in both editors.
 | Variant | File | Output | Best for |
 |---|---|---|---|
 | **Log panel** (v1.0.0) | `plugins/llm-statusline.ts` | bar in OpenCode's log panel (`:open-logs`) | Quiet users who don't want popups |
-| **Toast popup** (v1.1.0) | `plugins/llm-statusline.toast.ts` | 30-second TUI toast in the corner | Users who want the bar visible at all times |
+| **Toast popup** (v1.1.0) | `plugins/llm-statusline.toast.ts` | 5-minute TUI toast + `:open-logs` backup | Users who want the bar always findable |
 
 Both variants share the same Python script and the same quota adapters.
 

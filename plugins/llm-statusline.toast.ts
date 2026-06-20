@@ -14,7 +14,9 @@
 //    can read it like a real Claude Code session.
 // 4. It spawns ``python/session_tokens.py`` with the project cwd, session
 //    id, and a synthesised stdin payload.
-// 5. The script's rendered 3-line bar is delivered via ``client.tui.showToast``.
+// 5. The script's rendered 3-line bar is delivered via ``client.tui.showToast``
+//    (default 5 min duration, configurable via ``LLM_STATUSLINE_TOAST_MS``)
+//    and also logged to ``:open-logs`` as a fallback.
 //    If the bar text is identical to the previous one for the same session,
 //    the call is skipped (dedupe) to avoid triggering the TUI's internal
 //    rate limit.
@@ -34,7 +36,7 @@
 // 4. Optional env vars:
 //    - ``LLM_STATUSLINE_PYTHON``: override the ``python3`` interpreter.
 //    - ``LLM_STATUSLINE_TOAST_MS``: override the toast duration in ms
-//      (default 30000).
+//      (default 300000 = 5 min).
 //    - ``OPENCODE_PROJECT_DIR``: pin the folder shown in the toast.
 //
 // Gotchas
@@ -42,8 +44,11 @@
 // - OpenCode's toast popup does not render ANSI escape codes; we strip them
 //   before calling ``client.tui.showToast``. Original colors stay in the bar
 //   when the same script runs under Claude Code.
-// - The toast is shown on every ``session.idle``, but identical consecutive
-//   bars are deduplicated (skipped) to avoid hammering the TUI toast queue.
+// - The toast auto-dismisses after ``TOAST_MS`` (default 5 min). Increase
+//   ``LLM_STATUSLINE_TOAST_MS`` if you want it even longer. The bar is also
+//   logged to ``:open-logs`` on every update so you can always find it there.
+// - OpenCode version is detected via ``opencode --version`` at plugin init
+//   and shown as ``📟 v1.17.8`` in the bar.
 // - Failures in showToast, mkdir, writeFile, or Python spawn are logged via
 //   ``client.app.log({ level: "warn" })`` instead of being silently dropped,
 //   so they show up in OpenCode's log panel (``:open-logs``).
@@ -70,12 +75,37 @@ const CACHE_DIR = join(homedir(), ".cache", "opencode-llm-statusline")
 const CACHE_FILE = join(CACHE_DIR, "opencode-statusline.txt")
 
 const PLUGIN_NAME = "llm-statusline.toast"
-const TOAST_MS_DEFAULT = 30_000
+const TOAST_MS_DEFAULT = 300_000
 const TOAST_MS = (() => {
   const raw = process.env.LLM_STATUSLINE_TOAST_MS
   const n = raw == null ? NaN : Number(raw)
   return Number.isFinite(n) && n > 0 ? n : TOAST_MS_DEFAULT
 })()
+
+// Detect the real OpenCode version at module init time (runs once per
+// process). Falls back to "opencode" if the subprocess fails or times out.
+let OPENCODE_VERSION = "opencode"
+function detectOpenCodeVersion(): Promise<string> {
+  return new Promise((resolve) => {
+    const proc = spawn("opencode", ["--version"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5_000,
+    })
+    const out: Buffer[] = []
+    proc.stdout.on("data", (chunk: Buffer) => out.push(chunk))
+    proc.on("error", () => resolve("opencode"))
+    proc.on("close", (code: number | null) => {
+      if (code !== 0) { resolve("opencode"); return }
+      const raw = Buffer.concat(out).toString().trim()
+      // Typical output: "1.17.8" or "opencode 1.17.8" — extract the version.
+      const m = raw.match(/(\d+\.\d+\.\d+)/)
+      resolve(m ? m[1] : raw.slice(0, 40) || "opencode")
+    })
+  })
+}
+// Kick off detection eagerly; the promise settles by the time the first
+// session.idle fires.
+const _versionPromise = detectOpenCodeVersion().then((v) => { OPENCODE_VERSION = v })
 
 // Module-level state — shared across all events of all sessions.
 const sessionState = new Map<string, TokenState>()
@@ -364,7 +394,7 @@ async function handleSessionIdle(
   const stdinPayload: Record<string, unknown> = {
     model: { id: acc.model },
     workspace: { current_dir: projectDir },
-    version: "opencode",
+    version: OPENCODE_VERSION,
     context_window: { used_percentage: 0 },
     cost: { total_duration_ms: 0 },
   }
@@ -416,6 +446,13 @@ async function handleSessionIdle(
       },
     })
     lastShownBar.set(sessionID, barClean)
+    // Also log the bar to the app log so it's visible in :open-logs after
+    // the toast auto-dismisses.
+    await logInfo(client, summarize(result.output), {
+      session_id: sessionID,
+      ok: true,
+      requests: acc.requests,
+    })
   } catch (e) {
     await logWarn(client, "showToast failed", {
       session_id: sessionID,

@@ -36,6 +36,31 @@ const SCRIPT = join(homedir(), ".claude", "statusline", "session_tokens.py")
 const PYTHON = process.env.LLM_STATUSLINE_PYTHON ?? process.env.MINIMAX_STATUSLINE_PYTHON ?? "python3"
 const PLUGIN_NAME = "llm-statusline"
 
+// Detect the real OpenCode version at module init time (runs once per
+// process). Falls back to "opencode" if the subprocess fails or times out.
+let OPENCODE_VERSION = "opencode"
+function detectOpenCodeVersion(): Promise<string> {
+  return new Promise((resolve) => {
+    const proc = spawn("opencode", ["--version"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5_000,
+    })
+    const out: Buffer[] = []
+    proc.stdout.on("data", (chunk: Buffer) => out.push(chunk))
+    proc.on("error", () => resolve("opencode"))
+    proc.on("close", (code: number | null) => {
+      if (code !== 0) { resolve("opencode"); return }
+      const raw = Buffer.concat(out).toString().trim()
+      // Typical output: "1.17.8" or "opencode 1.17.8" — extract the version.
+      const m = raw.match(/(\d+\.\d+\.\d+)/)
+      resolve(m ? m[1] : raw.slice(0, 40) || "opencode")
+    })
+  })
+}
+// Kick off detection eagerly; the promise settles by the time the first
+// session.idle fires.
+const _versionPromise = detectOpenCodeVersion().then((v) => { OPENCODE_VERSION = v })
+
 interface TokenState {
   input: number
   output: number
@@ -273,7 +298,7 @@ async function handleSessionIdle(
   const stdinPayload: Record<string, unknown> = {
     model: { id: acc.model },
     workspace: { current_dir: projectDir },
-    version: "opencode",
+    version: OPENCODE_VERSION,
     context_window: {
       used_percentage: 0,
     },

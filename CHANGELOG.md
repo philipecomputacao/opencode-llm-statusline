@@ -9,14 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `plugins/llm-statusline.toast.ts`: toast no longer disappears after the
-  first model response. Added a `Map<sessionId, TokenState>` accumulator
-  matching the log-panel variant, deduplicated identical bar payloads
-  before calling `client.tui.showToast` to avoid triggering the TUI's
-  internal rate limit, and replaced silent `catch { /* noop */ }` blocks
-  with structured `client.app.log({ level: "warn" })` so failures surface
-  in the OpenCode log panel (`:open-logs`) instead of being swallowed.
-  Also removed dead code (`currentProject`, `extractProjectFromArgs`).
+- `plugins/llm-statusline.toast.ts`: toast duration default increased from
+  30 s to 300 s (5 min) so the bar stays visible between model responses
+  instead of disappearing after 30 s. Can be overridden with
+  `LLM_STATUSLINE_TOAST_MS`.
+- `plugins/llm-statusline.toast.ts`: bar is now also logged via
+  `client.app.log` on every successful toast, so it is always visible in
+  `:open-logs` as a fallback when the toast eventually auto-dismisses.
+- Both plugins: `version` field in the stdin payload was hardcoded to the
+  string `"opencode"` (rendering `📟 vopencode` in the bar). The plugin now
+  spawns `opencode --version` at init time and uses the real version number
+  (e.g. `1.17.8` → `📟 v1.17.8`). Falls back to `"opencode"` on failure.
 
 ### Added
 
