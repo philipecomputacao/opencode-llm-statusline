@@ -128,6 +128,162 @@ Both variants share the same Python script and the same quota adapters.
 
 ## Installation
 
+### 0. Install with an AI assistant (recommended if you're not technical)
+
+Copy the prompt below and paste it into any AI chat (ChatGPT, Claude,
+Gemini, etc.). The assistant will install this statusline plugin
+end-to-end on your machine — no programming knowledge required on
+your side.
+
+<details>
+<summary><strong>Click to reveal the install prompt — copy everything inside the box</strong></summary>
+
+```plaintext
+You are helping me install "opencode-llm-statusline", a plugin for
+[OpenCode][oc] (the AI coding TUI) that adds a statusline showing
+the active model, token usage, cost in USD, context window %, and
+burn rate. It comes in two variants: a toast popup (v1.2.0, default)
+or a log-panel renderer (v1.0.0). Both are written in TypeScript and
+install as a single `.ts` file symlinked into the OpenCode plugins
+directory.
+
+Your job: install it on my machine end-to-end and verify it works.
+Do not ask me coding questions — make sensible decisions and tell me
+what you did. If you hit a step that needs my input (e.g. which
+variant I prefer), ask exactly one focused question and continue.
+
+=========================================================
+STEP 1 — Detect my environment
+=========================================================
+Run these commands and remember the output:
+
+  uname -a                          # OS family (Darwin / Linux / Windows-bash)
+  command -v opencode               # is OpenCode already installed? which version?
+  opencode --version                # need >= 0.5
+  command -v node                   # need Node.js >= 18
+  node --version
+  command -v python3                # need Python 3.10+ (for the helper script)
+  python3 --version
+  echo "PLUG_DIR=${OPENCODE_PLUGINS_DIR:-$HOME/.config/opencode/plugins}"
+
+If `opencode` is missing, tell me to install it from
+https://opencode.ai/docs and stop. If `node` is missing, install it
+from https://nodejs.org (LTS recommended) and stop. If `python3` is
+missing, install it from https://python.org and stop.
+
+=========================================================
+STEP 2 — Choose the variant
+=========================================================
+Ask me ONE question: "Which variant do you want?"
+
+- **Toast popup (v1.2.0, recommended)** — a non-intrusive toast at
+  the top of the TUI that fades in/out. Good for short summaries
+  (model, tokens, cost, ctx %).
+- **Log panel (v1.0.0)** — appends each turn's usage to a dedicated
+  log buffer inside the TUI. Good for long sessions where you want
+  the historical context.
+
+Default to toast unless I say otherwise. Remember my choice for
+STEP 3.
+
+=========================================================
+STEP 3 — Clone and symlink
+=========================================================
+Run:
+
+  git clone https://github.com/philipecomputacao/opencode-llm-statusline.git
+  cd opencode-llm-statusline
+
+  mkdir -p ~/.config/opencode/plugins
+
+  # If I chose toast:
+  ln -sf "$(pwd)/plugins/llm-statusline.toast.ts" \
+         ~/.config/opencode/plugins/llm-statusline.ts
+
+  # If I chose log panel:
+  ln -sf "$(pwd)/plugins/llm-statusline.ts" \
+         ~/.config/opencode/plugins/llm-statusline.ts
+
+Verify the symlink:
+
+  ls -l ~/.config/opencode/plugins/llm-statusline.ts
+  # expect: ... -> /<absolute path>/llm-statusline.ts or .toast.ts
+
+If the symlink points to a non-existent file, you cloned to a
+different path than the symlink — `cd` into the clone dir and re-run
+the `ln -sf` command with `$(pwd)` substituted for the current
+absolute path.
+
+=========================================================
+STEP 4 — Register the plugin in OpenCode
+=========================================================
+Open the file ~/.config/opencode/config.json (or the equivalent
+config file the opencode CLI uses — check `opencode --help` or
+`opencode config docs`). Add the plugin entry:
+
+  {
+    "plugins": {
+      "llm-statusline": {
+        "path": "~/.config/opencode/plugins/llm-statusline.ts"
+      }
+    }
+  }
+
+If config.json already exists with other settings, MERGE this block
+into the existing "plugins" object — don't overwrite anything else.
+Verify the JSON is valid with:
+
+  python3 -m json.tool < ~/.config/opencode/config.json > /dev/null \
+      && echo "config.json is valid JSON"
+
+If that command errors, paste me the error and the config.json
+contents (without API keys) so I can see the syntax mistake.
+
+=========================================================
+STEP 5 — Verify it works
+=========================================================
+Restart OpenCode (close and reopen the TUI). Type any short prompt.
+You should see either:
+
+- A toast popup at the top of the TUI with the model name, token
+  counts, and a cost line (if you chose the toast variant).
+- A new "LLM" log panel that updates on each turn (if you chose
+  the log panel variant).
+
+If nothing appears, the most common cause is that the plugin path
+in config.json doesn't match the symlink target. Run:
+
+  ls -l ~/.config/opencode/plugins/llm-statusline.ts
+  realpath ~/.config/opencode/plugins/llm-statusline.ts
+
+Both should point to the same file inside the cloned repo. Fix
+the config.json "path" if they don't match.
+
+=========================================================
+STEP 6 — Optional: enable cost tracking
+=========================================================
+The statusline shows cost in USD for any model with a known price.
+No configuration needed — the bundled pricing data covers OpenAI,
+Anthropic, Google, Mistral, and DeepSeek. If you route through a
+custom gateway, you can extend the pricing list by editing
+`lib/pricing.json` inside the cloned repo and restarting OpenCode.
+
+=========================================================
+DONE — Tell me what you did
+=========================================================
+Summarise in 3-5 bullet points:
+- which variant I picked
+- the absolute path to the symlink target
+- the contents of my config.json plugins block
+- whether STEP 5 verification passed
+- any caveats or things I should know
+
+If anything failed, give me the exact error message and the command
+that produced it. Don't try to fix it silently — surface it.
+```
+
+</details>
+
 ### Prerequisites
 
 - [OpenCode][oc] `>= 0.5` (tested on `1.17.8`)
